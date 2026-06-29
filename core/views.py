@@ -88,6 +88,14 @@ class TopicListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        # 🟢 1. THE AUTO-SEED FAILSAFE
+        if not Topic.objects.exists():
+            default_topics = ['Sports','Movies','Politics','Education','Business','Technology','Health','Entertainment','Lifestyle','Others']
+            for title in default_topics:
+                # Creates them instantly if the database is empty
+                Topic.objects.create(title=title, description="Default category", is_active=True)
+
+        # 🟢 2. NORMAL FETCHING LOGIC
         topics = Topic.objects.filter(is_active=True)
         data = []
 
