@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 import os  # 🟢 ADDED: Required for OS path routing
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -79,13 +80,23 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 
 # Database
-# 🟢 EDITED: Routes to writable /tmp on Render, stays local on your laptop
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join('/tmp', 'db.sqlite3') if IS_RENDER else BASE_DIR / 'db.sqlite3',
+# Database
+if IS_RENDER:
+    # LIVE CLOUD DATABASE (PostgreSQL)
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=os.environ.get('DATABASE_URL'),
+            conn_max_age=600
+        )
     }
-}
+else:
+    # LOCAL LAPTOP DATABASE (SQLite)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
