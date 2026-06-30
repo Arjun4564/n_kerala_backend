@@ -424,68 +424,81 @@ class BattleArenaListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Read a 'filter' query param from Flutter (e.g., /api/battles/?filter=created)
         filter_type = request.query_params.get('filter', 'active')
         user = request.user
+        now = timezone.now()
 
-        # 1. Base QuerySet
-        queryset = BattleArena.objects.all()
+        # Sort newest battles first
+        queryset = BattleArena.objects.all().order_by('-created_at')
 
-        # 2. Apply filtering based on what Tab your Flutter UI is asking for
         if filter_type == 'created':
-            # Returns battles created by the logged-in user
             queryset = queryset.filter(creator=user)
         elif filter_type == 'result':
-            # Returns completed battles showing winners
             queryset = queryset.filter(status__in=['glow', 'result'])
         else:
-            # Default fallback: show active ongoing debates
             queryset = queryset.filter(status='active')
 
-        # 3. Serialize data structure manually to match your custom options array
         battles_list = []
         for battle in queryset:
-            # Collect choices for each battle item
-            options = [
-                {
+            # 1. Calculate Total Votes
+            total_votes = sum(opt.vote_count for opt in battle.options.all())
+            
+            # 2. Package Options with dynamic percentages
+            options = []
+            for opt in battle.options.all():
+                percentage = (opt.vote_count / total_votes * 100) if total_votes > 0 else 0
+                options.append({
                     "id": opt.id,
                     "text": opt.text,
                     "vote_count": opt.vote_count,
-                    "is_winner": opt.is_winner
-                }
-                for opt in battle.options.all()
-            ]
+                    "is_winner": opt.is_winner,
+                    "percentage": percentage
+                })
 
-            # Check if the current user already voted in this specific battle
+            # 3. Format Time Left exactly how Flutter expects it (HH:MM:SS)
+            time_left = "00:00:00"
+            if battle.ends_at and battle.ends_at > now:
+                diff = battle.ends_at - now
+                total_seconds = int(diff.total_seconds())
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                seconds = total_seconds % 60
+                time_left = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+            result_days_left = 0
+            if battle.result_delete_at and battle.result_delete_at > now:
+                result_days_left = (battle.result_delete_at - now).days
+
+            # 4. Build the nested Creator Profile dictionary
+            profile = get_or_create_profile(battle.creator)
+            creator_full = battle.creator.get_full_name().strip()
+            creator_data = {
+                "id": battle.creator.id,
+                "username": battle.creator.username,
+                "full_name": creator_full if creator_full else battle.creator.username,
+                "profile_picture": profile.profile_picture.url if profile.profile_picture else None,
+                "is_subscriber": profile.is_subscriber
+            }
+
+            # 5. Check if the current user has already voted
             user_vote = BattleArenaVote.objects.filter(user=user, battle=battle).first()
             has_voted = user_vote is not None
             voted_option_id = user_vote.option.id if has_voted else None
 
+            # Append the fully formatted package
             battles_list.append({
                 "id": battle.id,
                 "question": battle.question,
                 "battle_type": battle.battle_type,
                 "status": battle.status,
                 "is_urgent": battle.is_urgent,
-                "creator_id": battle.creator.id,
-                "ends_at": battle.ends_at.isoformat(),
-                "created_at": battle.created_at.isoformat(),
+                "time_left": time_left, 
+                "result_days_left": result_days_left,
+                "total_votes": total_votes,
                 "has_voted": has_voted,
                 "voted_option_id": voted_option_id,
+                "creator": creator_data,
                 "options": options
             })
 
         return Response({"battles": battles_list}, status=status.HTTP_200_OK)
-class BattleArenaVoteView(APIView):
-    permission_classes = [IsAuthenticated]
-    def post(self, request, battle_id):
-        return Response({"message": "Vote submitted", "battle_id": battle_id})
-    
-class SubmitFeedbackView(APIView):
-    permission_classes = [IsAuthenticated]
-    def post(self, request):
-        message = request.data.get("message", "").strip()
-        if not message:
-            return Response({"message": "Message is empty"}, status=status.HTTP_400_BAD_REQUEST)
-        print(f"🔥 NEW FEEDBACK from {request.user.username}: {message}")
-        return Response({"message": "Feedback received"}, status=status.HTTP_200_OK)
