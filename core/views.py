@@ -362,16 +362,120 @@ class ReportCreateView(APIView):
 # ==========================================
 # BATTLE ARENA & MISC
 # ==========================================
-class BattleArenaListView(APIView):
-    permission_classes = [IsAuthenticated]
-    def get(self, request):
-        return Response({"battles": []})
-
 class BattleArenaCreateView(APIView):
     permission_classes = [IsAuthenticated]
-    def post(self, request):
-        return Response({"message": "Battle created"})
 
+    def post(self, request):
+        data = request.data
+        question = data.get("question")
+        battle_type = data.get("battle_type")  # "one_vs_one" or "four_option"
+        is_urgent = data.get("is_urgent", False)
+        options_data = data.get("options", [])  # Expects list of strings: ["Option A", "Option B"]
+
+        # 1. Validation checks
+        if not question or not battle_type or not options_data:
+            return Response(
+                {"error": "Missing required fields: question, battle_type, and options are mandatory."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if battle_type == "one_vs_one" and len(options_data) != 2:
+            return Response({"error": "1 vs 1 battles must have exactly 2 choices."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if battle_type == "four_option" and len(options_data) != 4:
+            return Response({"error": "4 Option battles must have exactly 4 choices."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # 2. Establish timelines (e.g., battle expires in 24 hours, or 4 hours if urgent)
+            duration = timedelta(hours=4) if is_urgent else timedelta(days=1)
+            now = timezone.now()
+            ends_at = now + duration
+
+            # 3. Create the parent Battle Arena item
+            battle = BattleArena.objects.create(
+                creator=request.user,
+                battle_type=battle_type,
+                question=question,
+                is_urgent=is_urgent,
+                status="active",
+                ends_at=ends_at
+            )
+
+            # 4. Create bulk entries for choices attached to this game instance
+            for option_text in options_data:
+                BattleOption.objects.create(
+                    battle=battle,
+                    text=option_text
+                )
+
+            return Response(
+                {
+                    "message": "Battle created successfully",
+                    "battle_id": battle.id
+                }, 
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class BattleArenaListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Read a 'filter' query param from Flutter (e.g., /api/battles/?filter=created)
+        filter_type = request.query_params.get('filter', 'active')
+        user = request.user
+
+        # 1. Base QuerySet
+        queryset = BattleArena.objects.all()
+
+        # 2. Apply filtering based on what Tab your Flutter UI is asking for
+        if filter_type == 'created':
+            # Returns battles created by the logged-in user
+            queryset = queryset.filter(creator=user)
+        elif filter_type == 'result':
+            # Returns completed battles showing winners
+            queryset = queryset.filter(status__in=['glow', 'result'])
+        else:
+            # Default fallback: show active ongoing debates
+            queryset = queryset.filter(status='active')
+
+        # 3. Serialize data structure manually to match your custom options array
+        battles_list = []
+        for battle in queryset:
+            # Collect choices for each battle item
+            options = [
+                {
+                    "id": opt.id,
+                    "text": opt.text,
+                    "vote_count": opt.vote_count,
+                    "is_winner": opt.is_winner
+                }
+                for opt in battle.options.all()
+            ]
+
+            # Check if the current user already voted in this specific battle
+            user_vote = BattleArenaVote.objects.filter(user=user, battle=battle).first()
+            has_voted = user_vote is not None
+            voted_option_id = user_vote.option.id if has_voted else None
+
+            battles_list.append({
+                "id": battle.id,
+                "question": battle.question,
+                "battle_type": battle.battle_type,
+                "status": battle.status,
+                "is_urgent": battle.is_urgent,
+                "creator_id": battle.creator.id,
+                "ends_at": battle.ends_at.isoformat(),
+                "created_at": battle.created_at.isoformat(),
+                "has_voted": has_voted,
+                "voted_option_id": voted_option_id,
+                "options": options
+            })
+
+        return Response({"battles": battles_list}, status=status.HTTP_200_OK)
 class BattleArenaVoteView(APIView):
     permission_classes = [IsAuthenticated]
     def post(self, request, battle_id):
