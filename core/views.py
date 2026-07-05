@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from accounts.models import UserProfile
+from django.db import transaction
 
 # 🟢 1. Import your core models
 from .models import (
@@ -502,3 +503,48 @@ class BattleArenaListView(APIView):
             })
 
         return Response({"battles": battles_list}, status=status.HTTP_200_OK)
+
+class BattleArenaVoteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, battle_id):
+        option_id = request.data.get("option_id")
+        
+        if not option_id:
+            return Response({"message": "Option ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. Fetch the battle
+        battle = get_object_or_404(BattleArena, id=battle_id)
+
+        # 2. Prevent voting if the battle is closed or expired
+        if battle.status != "active":
+            return Response({"message": "This battle is no longer active."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if battle.ends_at and battle.ends_at < timezone.now():
+            return Response({"message": "Time is up! This battle has ended."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. Prevent double voting
+        if BattleArenaVote.objects.filter(user=request.user, battle=battle).exists():
+            return Response({"message": "You have already voted in this battle."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 4. Fetch the specific option the user chose
+        option = get_object_or_404(BattleOption, id=option_id, battle=battle)
+
+        try:
+            # 5. Use an atomic transaction to prevent database race conditions
+            with transaction.atomic():
+                # Create the permanent vote record
+                BattleArenaVote.objects.create(
+                    user=request.user,
+                    battle=battle,
+                    option=option
+                )
+                
+                # Increment the total score for this option
+                option.vote_count += 1
+                option.save()
+                
+            return Response({"success": True, "message": "Vote submitted successfully!"}, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({"message": "An error occurred while voting."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -19,6 +19,7 @@ urlpatterns = [
     path('battles/', views.BattleArenaListView.as_view(), name='battles_list'),
     path('battles/create/', views.BattleArenaCreateView.as_view(), name='create_battle'),
     path('battles/<int:battle_id>/vote/', views.BattleArenaVoteView.as_view(), name='vote_battle'),
+    path('battles/<int:battle_id>/vote/', views.BattleArenaVoteView.as_view(), name='battle-vote'),
 
     # 🟢 Feedback
     path('feedback/', views.SubmitFeedbackView.as_view(), name='submit_feedback'),
