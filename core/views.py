@@ -4,6 +4,7 @@ from django.db import models
 from django.db.models import Q, F
 from django.utils import timezone
 
+
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -124,15 +125,44 @@ class OpinionListCreateView(APIView):
 
     def get(self, request):
         feed_type = request.GET.get("type", "all")
+        
+        # Optimize database query
         opinions = Opinion.objects.filter(is_deleted=False).select_related("user", "topic")
 
         if feed_type == "top":
-            opinions = opinions.order_by("-boost_count", "-created_at")[:50]
+            # ==========================================
+            # 🚀 THE GRAVITY MODEL (TRENDING FEED)
+            # ==========================================
+            now = timezone.now()
+            gravity_power = 1.8 
+
+            def calculate_gravity_score(op):
+                # 1. Base Points
+                points = op.like_count + (op.boost_count * 5)
+                age_in_hours = (now - op.created_at).total_seconds() / 3600.0
+                
+                # 2. Apply Time Decay
+                if points == 0:
+                    base_score = 0.5 / ((age_in_hours + 2) ** gravity_power)
+                else:
+                    base_score = points / ((age_in_hours + 2) ** gravity_power)
+                    
+                # 3. 🌟 THE SUBSCRIBER PULL (1.5x Multiplier)
+                profile = get_or_create_profile(op.user)
+                if profile.is_subscriber:
+                    return base_score * 1.5
+                    
+                return base_score
+
+            # Sort by gravity score
+            opinions = sorted(opinions, key=calculate_gravity_score, reverse=True)[:100]
+
         else:
-            opinions = sorted(
-                opinions,
-                key=lambda op: (not get_or_create_profile(op.user).is_subscriber, -op.created_at.timestamp())
-            )
+            # ==========================================
+            # ⏱️ THE STANDARD TIMELINE (DEFAULT FEED)
+            # ==========================================
+            # A natural, purely chronological feed for everyone (Newest to Oldest)
+            opinions = opinions.order_by("-created_at")
 
         data = [opinion_data(opinion, request) for opinion in opinions]
         return Response(data)
