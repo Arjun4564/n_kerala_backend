@@ -578,3 +578,89 @@ class BattleArenaVoteView(APIView):
             
         except Exception as e:
             return Response({"message": "An error occurred while voting."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+# ==========================================
+# REPLY (COMMENT) ACTIONS
+# ==========================================
+
+class ReplyDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, reply_id):
+        # 🟢 EDIT a comment
+        content = request.data.get("content", "").strip()
+        if not content:
+            return Response({"message": "Comment cannot be empty"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # We enforce user=request.user so people can't edit other people's comments
+            reply = OpinionReply.objects.get(id=reply_id, user=request.user, is_deleted=False)
+        except OpinionReply.DoesNotExist:
+            return Response({"message": "Comment not found or unauthorized"}, status=status.HTTP_404_NOT_FOUND)
+
+        reply.content = content
+        reply.save(update_fields=["content"])
+        
+        return Response({
+            "success": True, 
+            "data": {"content": reply.content}
+        }, status=status.HTTP_200_OK)
+
+    def delete(self, request, reply_id):
+        # 🟢 DELETE a comment (Soft delete to match your style)
+        try:
+            reply = OpinionReply.objects.get(id=reply_id, user=request.user, is_deleted=False)
+        except OpinionReply.DoesNotExist:
+            return Response({"message": "Comment not found or unauthorized"}, status=status.HTTP_404_NOT_FOUND)
+
+        reply.is_deleted = True
+        reply.deleted_at = timezone.now()
+        reply.save(update_fields=["is_deleted", "deleted_at"])
+        
+        return Response({"success": True, "message": "Comment deleted"}, status=status.HTTP_200_OK)
+
+
+class LikeReplyView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, reply_id):
+        # 🟢 LIKE a comment
+        try:
+            reply = OpinionReply.objects.get(id=reply_id, is_deleted=False)
+        except OpinionReply.DoesNotExist:
+            return Response({"message": "Comment not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Note: This assumes you added a ManyToMany 'likes' field to your OpinionReply model. 
+        # If you created a separate ReplyLike model instead, update this logic to match OpinionLike!
+        if request.user in reply.likes.all():
+            reply.likes.remove(request.user)
+            is_liked = False
+        else:
+            reply.likes.add(request.user)
+            is_liked = True
+            
+        return Response({
+            "success": True,
+            "data": {
+                "is_liked": is_liked,
+                "like_count": reply.likes.count()
+            }
+        }, status=status.HTTP_200_OK)
+
+
+class ReportReplyView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, reply_id):
+        # 🟢 REPORT a comment
+        reason = request.data.get("reason", "Inappropriate comment")
+        
+        try:
+            reply = OpinionReply.objects.get(id=reply_id, is_deleted=False)
+        except OpinionReply.DoesNotExist:
+            return Response({"message": "Comment not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Assuming your Report model can take a generic string reason. 
+        Report.objects.create(user=request.user, reason=f"Reported Reply ID {reply_id}: {reason}")
+        
+        return Response({"success": True, "message": "Report submitted"}, status=status.HTTP_201_CREATED)

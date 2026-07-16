@@ -31,4 +31,9 @@ urlpatterns = [
     path('notifications/<int:pk>/restore/', views.RestoreNotificationView.as_view(), name='restore_notification'),
     path('notifications/unread-count/', views.NotificationUnreadCountView.as_view(), name='unread_count'),
     path('notifications/<int:pk>/mark-read/', views.MarkSingleNotificationReadView.as_view(), name='mark_single_read'),
+    
+    # 🟢 Replies (Comments) Management
+    path('replies/<int:reply_id>/', views.ReplyDetailView.as_view(), name='reply_detail'), # Handles EDIT and DELETE
+    path('replies/<int:reply_id>/like/', views.LikeReplyView.as_view(), name='like_reply'),
+    path('replies/<int:reply_id>/report/', views.ReportReplyView.as_view(), name='report_reply'),
 ]
