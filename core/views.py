@@ -626,15 +626,15 @@ class ReplyDetailView(APIView):
         }, status=status.HTTP_200_OK)
 
     def delete(self, request, reply_id):
-        # 🟢 DELETE a comment (Soft delete to match your style)
+        # 🟢 DELETE a comment 
         try:
             reply = OpinionReply.objects.get(id=reply_id, user=request.user, is_deleted=False)
         except OpinionReply.DoesNotExist:
             return Response({"message": "Comment not found or unauthorized"}, status=status.HTTP_404_NOT_FOUND)
 
+        # FIX: Only update 'is_deleted' since 'deleted_at' doesn't exist in the model
         reply.is_deleted = True
-        reply.deleted_at = timezone.now()
-        reply.save(update_fields=["is_deleted", "deleted_at"])
+        reply.save(update_fields=["is_deleted"])
         
         return Response({"success": True, "message": "Comment deleted"}, status=status.HTTP_200_OK)
 
