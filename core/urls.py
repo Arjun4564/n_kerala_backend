@@ -22,7 +22,7 @@ urlpatterns = [
     path('battles/<int:battle_id>/vote/', views.BattleArenaVoteView.as_view(), name='battle-vote'),
 
     # 🟢 Feedback
-    path('feedback/', views.SubmitFeedbackView.as_view(), name='submit_feedback'),
+    # path('feedback/', views.SubmitFeedbackView.as_view(), name='submit_feedback'),
     
     # 🟢 Notifications
     path('notifications/', views.NotificationListView.as_view(), name='notifications'),
