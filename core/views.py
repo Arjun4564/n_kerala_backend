@@ -290,6 +290,12 @@ class OpinionReplyListCreateView(APIView):
 
         for reply in replies:
             profile = get_or_create_profile(reply.user)
+            
+            # Determine ownership and like status for the Flutter UI
+            is_owner = (reply.user == request.user)
+            # Assuming you have a likes ManyToMany field. If you use a separate ReplyLike model, adjust this query!
+            is_liked = request.user in reply.likes.all() 
+            
             data.append({
                 "id": reply.id,
                 "username": reply.user.username,
@@ -298,6 +304,9 @@ class OpinionReplyListCreateView(APIView):
                 "is_subscriber": profile.is_subscriber,
                 "content": reply.content,
                 "created_at": reply.created_at,
+                "is_owner": is_owner,
+                "is_liked": is_liked,
+                "like_count": reply.likes.count(),
             })
         return Response(data)
 
@@ -314,12 +323,22 @@ class OpinionReplyListCreateView(APIView):
 
         reply = OpinionReply.objects.create(user=request.user, opinion=opinion, content=content)
         opinion.refresh_from_db()
+        profile = get_or_create_profile(request.user)
 
+        # Return the fully formatted object so Flutter can immediately insert it into the list
         return Response({
             "id": reply.id,
+            "username": request.user.username,
+            "full_name": request.user.get_full_name().strip() or request.user.username,
+            "profile_picture": profile.profile_picture.url if profile.profile_picture else None,
+            "is_subscriber": profile.is_subscriber,
             "content": reply.content,
+            "created_at": reply.created_at,
+            "is_owner": True,
+            "is_liked": False,
+            "like_count": 0,
             "reply_count": opinion.reply_count,
-        })
+        }, status=status.HTTP_201_CREATED)
 
 # ==========================================
 # NOTIFICATIONS & REPORTS
