@@ -8,6 +8,7 @@ from django.dispatch import receiver
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
+from accounts.models import UserProfile
 
 User = get_user_model()
 
@@ -171,9 +172,15 @@ class OpinionReply(models.Model):
     )
 
     content = models.TextField(max_length=150)
+    
+    # 🟢 ADD THIS LINE:
+    likes = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, 
+        related_name='liked_replies', 
+        blank=True
+    )
 
     is_deleted = models.BooleanField(default=False)
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
