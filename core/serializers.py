@@ -42,24 +42,22 @@ class OpinionSerializer(serializers.ModelSerializer):
         source='user.username',
         read_only=True
     )
-
     district = serializers.CharField(
         source='user.district',
         read_only=True
     )
-
     profile_picture = serializers.ImageField(
         source='user.profile.profile_picture',
         read_only=True
     )
-
     is_liked = serializers.SerializerMethodField()
-
     is_boosted = serializers.SerializerMethodField()
+    
+    # 1. ADD THIS LINE HERE: Override the default reply_count
+    reply_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Opinion
-
         fields = [
             'id',
             'username',
@@ -80,25 +78,28 @@ class OpinionSerializer(serializers.ModelSerializer):
 
     def get_is_liked(self, obj):
         request = self.context.get('request')
-
         if request and request.user.is_authenticated:
             return OpinionLike.objects.filter(
                 user=request.user,
                 opinion=obj
             ).exists()
-
         return False
 
     def get_is_boosted(self, obj):
         request = self.context.get('request')
-
         if request and request.user.is_authenticated:
             return OpinionBoost.objects.filter(
                 user=request.user,
                 opinion=obj
             ).exists()
-
         return False
+
+    # 2. ADD THIS METHOD HERE: Calculate the accurate count
+    def get_reply_count(self, obj):
+        # This counts only replies where is_deleted is False.
+        # Note: If your related name in models.py is different (e.g., 'comments' or 'opinionreply_set'), 
+        # replace 'replies' with that exact name below.
+        return obj.replies.filter(is_deleted=False).count()
 
 
 class OpinionReplySerializer(serializers.ModelSerializer):
